@@ -9,12 +9,21 @@ DEFAULTS    = {
 }
 
 def main():
+    data = {}
+    first = False
+    
     if path.isfile("data.json"):
         # Not first
-        data = load("data.json")
+        data = load(open("data.json", "r"))
+        
     else:
         # First
         open("data.json", "x").close()
         data = DEFAULTS
+        dump(data, open("data.json", "w"))
+        first = True
+    
+    if first == True: print("First time!")
+    if first == False: print("Not First time!")
 
 main()
