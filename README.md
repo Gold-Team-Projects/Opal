@@ -1,2 +1,2 @@
-# Opal-Chatbot
-An open-source chatbot created to increase workspace productivity
+# Opal
+A open-source chatbot created to increase workspace productivity
