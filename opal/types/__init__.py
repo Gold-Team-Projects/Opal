@@ -1,2 +1,2 @@
-from types.message import Message
-from types.module import Module
+from opal.types.message import Message
+from opal.types.module import Module

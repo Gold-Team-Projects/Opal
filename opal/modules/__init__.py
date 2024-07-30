@@ -1,0 +1,1 @@
+from opal.modules.language   import LanguageGeneratorModule

@@ -1,20 +1,25 @@
 import  torch
 import  threading
-import  torch.nn        as nn
-from    types.message   import Message
-from    queue           import PriorityQueue
+import  torch.nn                as nn
+from    opal.types.message      import Message
+from    queue                   import PriorityQueue
 
 class Module(nn.Module):
     name: str               = ""
     """The name of the module (used for debugging)"""
+    id: str                 = ""
+    """An unique ID that other modules use to access this module."""
     continuous: bool        = False
     """`True` if the module should always be running."""
     stop_on_error: bool     = False
-    """`True` if `opal` should not handle errors."""
+    """`True` if `opal` should stop when errors occur. This should be enabled for critical modules. """
     queue: PriorityQueue    = PriorityQueue()
     """Queue for messages (By priority)."""
-    on_message: function    = None
-    """Run on message reception"""
+    brain                   = None
+    """The brain holding this module."""
+    
+    def __init__(self):
+        super(Module, self).__init__()
     
     def activate(self):
         """
@@ -26,7 +31,7 @@ class Module(nn.Module):
             self.thread.daemon = True
             self.thread.start()
             
-    def run(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
         """
         Ran on continuous module activation or when a non-continuous module is invoked.
         This should be overwritten.
@@ -34,5 +39,15 @@ class Module(nn.Module):
         raise NotImplementedError
 
     def enqueue(self, x, priority):
-        self.on_message()
         self.queue.put((x, priority))
+        self.on_message()
+        
+    def set_brain(self, brain):
+        self.brain = brain
+        
+    def on_message(self):
+        """
+        Ran on message reception.
+        This should be overwritten.
+        """
+        raise NotImplementedError
