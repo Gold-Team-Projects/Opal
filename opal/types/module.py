@@ -20,6 +20,10 @@ class Module(nn.Module):
     
     def __init__(self):
         super(Module, self).__init__()
+        
+    def setup(self, *args, **kwargs):
+        """Called to set up the module."""
+        raise NotImplementedError()
     
     def activate(self):
         """

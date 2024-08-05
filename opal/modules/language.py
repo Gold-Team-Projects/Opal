@@ -1,12 +1,15 @@
 import  re
+import  csv
 import  opal
 import  torch
 import  spacy
 import  string
 import  threading
 import  importlib
-import  torch.nn        as nn
-import  torch.optim     as optim
+import  torch.nn            as nn
+import  torch.optim         as optim
+import  torch.nn.functional as F
+import  torch.nn.utils      as utils
 
 class LanguageMemoryModule(opal.Module):
     name            = "Language Processor Module"
@@ -29,7 +32,7 @@ class LanguageMemoryModule(opal.Module):
     
     lock = threading.Lock()
     
-    def __init__(self, brain, lang="en"):
+    def setup(self, brain, lang="en"):
         super(LanguageMemoryModule, self).__init__()
         self.set_brain(brain)
         
@@ -66,6 +69,7 @@ class LanguageMemoryModule(opal.Module):
         if type == "translate-backward": # list<int> -> str
             return " ".join([self.vocab_backward[int(idx)] for idx in args[0]])
         if type == "train": pass
+        
             
     def prepare(self, x: str):
         x = x.lower()
@@ -82,55 +86,75 @@ class LanguageMemoryModule(opal.Module):
         
         return out
         
-class LanguageGeneratorModule(opal.Module):
-    
-    class Encoder(nn.Module): pass
-    
-    class Decoder(nn.Module): pass
-    
+class LanguageGeneratorModule(opal.Module):    
     name            = "Language Generator Module"
-    id              = "lang-gen"
+    id              = "gen-lang"
     continuous      = False
     stop_on_error   = False
     
     default_window_size = 6
     
-    def __init__(self, brain, lang: str="en"):
+    def setup(self, brain, lang: str="en", hidden_size=256, dropout=0.2, num_layers=2, bidirectional=True):
         super(LanguageGeneratorModule, self).__init__()
         self.set_brain(brain)
         
         try: self.brain.modules["memory-lang"].forward("ping")
         except: self.brain.add_module(LanguageMemoryModule(brain, lang))
         
-        self.lstm
+        self.lstm = nn.LSTM(input_size=0, hidden_size=hidden_size, num_layers=num_layers, bidirectional=bidirectional, dropout=dropout)
     
-    def forward(self, type, *args, **kwargs):
+    async def forward(self, type, *args, **kwargs):
         if type == "train": 
             try: window = args[1]
             except: window = self.default_window_size
+            try: kwargs["file"] = kwargs["file"]
+            except: kwargs["file"] = False
+            try: kwargs["asynchronous"] = kwargs["asynchronous"]
+            except: kwargs["asynchronous"] = False
             
             if kwargs["file"] == True: 
-                for path in args[0]:
-                    with open(path, "r") as file:
-                        x = []
-                        y = []
+                def fn():
+                    for path in args[0]:
+                        x = {"predict": [], "respond": []}
+                        y = {"predict": [], "respond": []}
                         
-                        data = self.brain.modules["memory-lang"].forward("translate-forward", file.read())
+                        if path.find("csv") != -1:
+                            f = open(path, "r")
+                            reader = csv.reader(f)
+                            reader.next()
+                            
+                            for row in reader:
+                                row[0] = self.brain.modules["memory-lang"].forward("translate-forward", row[0])
+                                row[1] = self.brain.modules["memory-lang"].forward("translate-forward", row[1])
+                                x["respond"].append(row[0])
+                                y["respond"].append(row[1])
+                                
+                                def fn2(tokens):
+                                    for i in range(len(tokens)):
+                                        window_tokens = tokens[window:i] if i > 6 else tokens[:i]
+                                        x["predict"].append(window_tokens)
+                                        y["predict"].append(tokens[i])
+                                            
+                                fn2(self.brain.modules["memory-lang"].forward("translate-forward", row[0]))
+                                fn2(self.brain.modules["memory-lang"].forward("translate-forward", row[1]))
+                            
+                            self.brain.modules["memory-lang"].forward("train", f.read())
+                            
+                            f.close()
+                            
+                        x["predict"] = torch.tensor(x["predict"], torch.float64)
+                        x["respond"] = torch.tensor(x["respond"], torch.float64)
+                        y["predict"] = torch.tensor(y["predict"], torch.float64)
+                        y["respond"] = torch.tensor(y["respond"], torch.float64)
                         
-                        for i in range(len(data)):
-                            try:
-                                self.brain.modules["memory-lang"].forward("expand", data[i])
-                                seqin = data[i:i + window]
-                                seqout = data[i + window]
-                                x.append(seqin)
-                                y.append(seqout)
-                            except: break
-
-                        self.brain.modules["memory-lang"].forward("train", x, y, asynchronous=True)
                         
-                        
-                        
-                        
+                if kwargs["asynchronous"] == True:
+                    thread = threading.Thread(target=fn)
+                    thread.daemon = True
+                    thread.start()
+                    thread.join()
+                else: fn()
+                
             
             else:
                 pass
